@@ -5,8 +5,6 @@ import seaborn as sns
 import time
 import random
 import warnings
-
-# Machine Learning and Deep Learning Libraries
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
@@ -31,7 +29,7 @@ warnings.filterwarnings('ignore')
 from deap import base, creator, tools, algorithms
 
 # %%
-# Fix random seeds for reproducibility
+# Random seeds for reproducibility
 np.random.seed(42)
 tf.random.set_seed(42)
 random.seed(42)
@@ -47,27 +45,32 @@ class StrokeModelOptimizer:
         self.X_train, self.X_test, self.y_train, self.y_test, self.scaler = self.load_and_preprocess_data(filepath)
 
         # Enhanced GA Configuration
-        self.POPULATION_SIZE = 5
-        self.MAX_GENERATIONS = 2
+        self.POPULATION_SIZE = 10
+        self.MAX_GENERATIONS = 5
         self.CROSSOVER_PROB = 0.6
-        self.MUTATION_PROB = 0.5
+        self.MUTATION_PROB = 0.4
 
         # Gene configuration: ranges for hyperparameters with wider exploration
         self.GENE_CONFIGS = {
-            'neurons_layer1': (16, 256),  # Wider range
-            'neurons_layer2': (8, 128),  # Wider range
-            'dropout_rate1': (0.1, 0.6),  # Expanded dropout range
-            'dropout_rate2': (0.1, 0.4),  # Expanded dropout range
-            'learning_rate': (0.0001, 0.01),  # Wider learning rate range
-            'l2_reg': (1e-4, 1)  # Expanded regularization range
+            'neurons_layer1': (32, 512),
+            'neurons_layer2': (16, 256),
+            'dropout_rate1': (0.1, 0.6),
+            'dropout_rate2': (0.1, 0.4),
+            'learning_rate': (0.0001, 0.01),
+            'l2_reg': (1e-4, 1)
         }
-        self.TRAINING_EPOCHS = 5
+        self.TRAINING_EPOCHS = 15
+
         # Tracking variables
         self.generation_best_loss = []
         self.generation_diversity = []
         self.generation_individuals = []
         self.generation_best_accuracy = []
-        self.best_individual = None
+
+        # Global Optima
+        # Added a variable to track the absolute best individual across all generations
+        self.absolute_best_individual = None
+        self.absolute_best_fitness = (float('-inf'), float('inf'))  # Initialize with worst possible fitness
 
         self.setup_deap_framework()
 
@@ -100,7 +103,7 @@ class StrokeModelOptimizer:
 
     def setup_deap_framework(self):
         """Setup DEAP for GA optimization with enhanced diversity."""  # Fix to mitigate premature convergence
-        creator.create("FitnessMulti", base.Fitness, weights=(-1.0, 1.0))  # Minimize loss, maximize accuracy
+        creator.create("FitnessMulti", base.Fitness, weights=(1.0, -1.0))  # Maximize accuracy, Minimize loss
         creator.create("Individual", list, fitness=creator.FitnessMulti)
 
         self.toolbox = base.Toolbox()
@@ -121,33 +124,16 @@ class StrokeModelOptimizer:
 
         # Enhanced crossover and mutation
         self.toolbox.register("mate", tools.cxBlend, alpha=0.5)
+        self.toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.5, indpb=0.3)
 
-        # self.toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.5, indpb=0.3)
-
-        # Remove this for prev code (and uncomment mutate above) ---------------------------------
-        # Clamp function to enforce valid l2 range (ensure non-negative values)
-        def mutate_with_clamping(individual):
-            # Apply Gaussian mutation
-            tools.mutGaussian(individual, mu=0, sigma=0.5, indpb=0.3)
-
-            # Clamp l2 value to ensure it is non-negative
-            individual[5] = max(0.0, individual[5])  # Ensure l2 is non-negative
-            # Clamp rate to ensure it's between 0 and 1
-            individual[3] = min(1.0, max(0.0, individual[4]))  # Ensure learning rate is between 0 and 1
-            return individual,
-
-        self.toolbox.register("mutate", mutate_with_clamping)
-
-        # --------------------------------------------------------------
-
-        # Custom selection with tournament selection to maintain diversity
         def diversity_tournament_selection(individuals, k, tournsize=5):
             """Tournament selection with diversity consideration"""
             selected = []
             for _ in range(k):
                 # Perform tournament selection
                 tournament = random.sample(individuals, tournsize)
-                winner = min(tournament, key=lambda ind: ind.fitness.values[0])
+                # Select based on maximizing accuracy (the second element)
+                winner = max(tournament, key=lambda ind: ind.fitness.values[0])
                 selected.append(winner)
             return selected
 
@@ -189,10 +175,10 @@ class StrokeModelOptimizer:
             loss, acc = model.evaluate(self.X_test, self.y_test, verbose=0)
 
             # Fitness: Minimize loss and maximize accuracy
-            return loss, -acc  # Note: Accuracy is negated for maximization
+            return acc, loss
         except Exception as e:
             print(f"Evaluation error: {e}")
-            return 1e6, 0  # Penalize invalid individuals
+            return 0, 1e6  # Penalize invalid individuals
 
     def run_optimization(self):
         # Reset tracking variables
@@ -209,6 +195,11 @@ class StrokeModelOptimizer:
         for ind, fit in zip(pop, fitnesses):
             ind.fitness.values = fit
 
+            # Check if this is the absolute best individual so far
+            if self.is_individual_better(fit, self.absolute_best_fitness):
+                self.absolute_best_individual = ind
+                self.absolute_best_fitness = fit
+
         # Generational loop with enhanced tracking and diversity preservation
         for gen in range(self.MAX_GENERATIONS):
             # Calculate and track population diversity
@@ -216,7 +207,6 @@ class StrokeModelOptimizer:
             self.generation_diversity.append(current_diversity)
 
             # Select next generation individuals
-            # offspring = self.toolbox.select(pop, len(pop))
             offspring = self.toolbox.select(pop,
                                             len(pop) - self.POPULATION_SIZE // 10)  # Reduce size of offspring by 10%
 
@@ -244,13 +234,18 @@ class StrokeModelOptimizer:
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
 
+                # Check if this is the absolute best individual so far
+                if self.is_individual_better(fit, self.absolute_best_fitness):
+                    self.absolute_best_individual = ind
+                    self.absolute_best_fitness = fit
+
             # Replace population
             pop[:] = offspring
 
             # Track generation best fitness
             best_ind = tools.selBest(pop, 1)[0]
-            self.generation_best_loss.append(best_ind.fitness.values[0])
-            self.generation_best_accuracy.append(-best_ind.fitness.values[1])  # Best accuracy
+            self.generation_best_loss.append(best_ind.fitness.values[1])  # CHNGD
+            self.generation_best_accuracy.append(best_ind.fitness.values[0])  # Best accuracy
 
             # Track information about each individual in this generation
             self.generation_individuals.append([])  # Create an empty list for this generation
@@ -259,48 +254,63 @@ class StrokeModelOptimizer:
                 self.generation_individuals[-1].append(ind_info)  # Add info to current generation list
 
             # Print generation details
+            print("")
             print(f"Generation {gen + 1}:")
             print(f"Diversity: {current_diversity}")
             print("\nAll Individuals in this Generation:")
             for i, ind_info in enumerate(self.generation_individuals[-1], 1):
                 print(f"Individual {i}: {ind_info['individual']}")
-                print(f"Fitness: {ind_info['fitness']}\n")
+                print(f"Fitness (Loss, Accuracy): {ind_info['fitness'][::-1]}\n")
 
             print("Best Individual Hyperparameters:", best_ind)
             print("")
-            print(f"Best Loss: {best_ind.fitness.values[0]}")
-            print(f"Best Accuracy: {-best_ind.fitness.values[1]}")
+            print(f"Best Accuracy: {best_ind.fitness.values[0]}")
+            print(f"Best Loss: {best_ind.fitness.values[1]}")
             print("")
-            print("Best Fitness (Loss, Accuracy):", best_ind.fitness.values)
+            print("Best Fitness (Accuracy, Loss):", best_ind.fitness.values)
 
         # Store the best overall individual
-        self.best_individual = tools.selBest(pop, 1)[0]
+        self.best_individual = self.absolute_best_individual
 
         # Visualize results
         self.visualize_results(pop)
+
+    def is_individual_better(self, new_fitness, current_best_fitness):
+        """
+        Compare two fitness values to determine if the new individual is better.
+        Prioritize accuracy first, then consider loss.
+        """
+        # First, compare accuracy (higher is better)
+        if new_fitness[0] > current_best_fitness[0]:  # CHNGEDD
+            return True
+        # If accuracies are equal, compare loss (lower is better)
+        elif new_fitness[0] == -current_best_fitness[0] and new_fitness[1] < current_best_fitness[1]:
+            return True
+        return False
 
     def visualize_results(self, pop):
         # Create a figure with multiple subplots
         fig, axs = plt.subplots(3, 2, figsize=(15, 12))
 
-        # 1. Convergence Plot (Loss)
-        axs[0, 0].plot(range(1, len(self.generation_best_loss) + 1),
-                       self.generation_best_loss, marker='o', label="Best Loss")
-        axs[0, 0].set_title('Convergence Plot (Loss)')
-        axs[0, 0].set_xlabel('Generation')
-        axs[0, 0].set_ylabel('Loss')
-
-        # 2. Convergence Plot (Accuracy)
-        axs[0, 1].plot(range(1, len(self.generation_best_accuracy) + 1),
+        # 1. Convergence Plot (Accuracy)
+        axs[0, 0].plot(range(1, len(self.generation_best_accuracy) + 1),
                        self.generation_best_accuracy, marker='o', color='orange', label="Best Accuracy")
-        axs[0, 1].set_title('Convergence Plot (Accuracy)')
+        axs[0, 0].set_title('Convergence Plot (Accuracy)')
+        axs[0, 0].set_xlabel('Generation')
+        axs[0, 0].set_ylabel('Accuracy')
+        axs[0, 0].legend()
+
+        # 2. Convergence Plot (Loss)
+        axs[0, 1].plot(range(1, len(self.generation_best_loss) + 1),
+                       self.generation_best_loss, marker='o', label="Best Loss")
+        axs[0, 1].set_title('Convergence Plot (Loss)')
         axs[0, 1].set_xlabel('Generation')
-        axs[0, 1].set_ylabel('Accuracy')
+        axs[0, 1].set_ylabel('Loss')
         axs[0, 1].legend()
 
         # 3. Pareto Front Visualization
-        losses = [ind.fitness.values[0] for ind in pop]
-        accuracies = [-ind.fitness.values[1] for ind in pop]
+        accuracies = [ind.fitness.values[0] for ind in pop]  # Accuracy first element
+        losses = [ind.fitness.values[1] for ind in pop]  # Loss second element
         axs[1, 0].scatter(losses, accuracies, c='b', label="Pareto Front")
         axs[1, 0].set_xlabel("Loss")
         axs[1, 0].set_ylabel("Accuracy")
@@ -337,9 +347,6 @@ class StrokeModelOptimizer:
         # Use the best individual's hyperparameters to build and train the final model
         print("\nBest Overall Individual Hyperparameters:", self.best_individual)
 
-        # Build final model using BEST optimized hyperparameters
-        final_model = self.build_ann(self.best_individual)
-
         # Train with full training data using optimized hyperparameters
         neurons1, neurons2, drop1, drop2, lr, l2_reg = self.best_individual
         print("\nTraining Final Model with Optimized Hyperparameters:")
@@ -349,6 +356,9 @@ class StrokeModelOptimizer:
         print(f"Dropout Rate 2: {drop2}")
         print(f"Learning Rate: {lr}")
         print(f"L2 Regularization: {l2_reg}")
+
+        # Build final model using BEST optimized hyperparameters
+        final_model = self.build_ann(self.best_individual)
 
         # Train the model
         final_model.fit(self.X_train, self.y_train,
@@ -374,7 +384,8 @@ class StrokeModelOptimizer:
         # ROC Curve
         plt.subplot(1, 3, 2)
         fpr, tpr, _ = roc_curve(self.y_test, final_model.predict(self.X_test))
-        plt.plot(fpr, tpr, label=f'AUC = {auc(fpr, tpr):.2f}')
+        roc_auc = auc(fpr, tpr)
+        plt.plot(fpr, tpr, label=f'AUC = {roc_auc:.2f}')
         plt.xlabel("False Positive Rate")
         plt.ylabel("True Positive Rate")
         plt.title("ROC Curve")

@@ -3,10 +3,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-# Add the directory containing your original notebook to the Python path
-sys.path.append(os.path.abspath('.'))
-
-# Import your StrokeModelOptimizer
+# Direct import
 from final_moga_ui import StrokeModelOptimizer
 
 
@@ -20,7 +17,7 @@ class GeneticAlgorithmUI:
         st.sidebar.header("Dataset Selection")
         dataset_option = st.sidebar.selectbox(
             "Choose Dataset Source",
-            ["Use Sample Dataset", "Upload Custom Dataset"]
+            ["Upload Custom Dataset", "Use Sample Dataset"]
         )
 
         if dataset_option == "Upload Custom Dataset":
@@ -36,10 +33,10 @@ class GeneticAlgorithmUI:
                 st.sidebar.success("File uploaded successfully!")
         else:
             # Use a default dataset path
-            self.filepath = "/content/sample_data/cleaned-stroke-prediction-dataset-balanced.csv"
+            self.filepath = "path/to/your/default/dataset.csv"
 
     def render_ui(self):
-        st.title("Genetic Algorithm for ANN Hyperparameter Optimization")
+        st.title("Multi-Objective Genetic Algorithm for Artificial Neural Network Hyperparameter Optimization")
 
         # Dataset Loading
         self.load_dataset()
@@ -50,7 +47,7 @@ class GeneticAlgorithmUI:
         # Hyperparameter Sliders
         population_size = st.sidebar.slider(
             "Population Size",
-            min_value=10,
+            min_value=1,
             max_value=100,
             value=20,
             help="Number of individuals in each generation"
@@ -58,7 +55,7 @@ class GeneticAlgorithmUI:
 
         max_generations = st.sidebar.slider(
             "Max Generations",
-            min_value=5,
+            min_value=1,
             max_value=50,
             value=10,
             help="Total number of generations to evolve"
@@ -83,7 +80,7 @@ class GeneticAlgorithmUI:
         )
 
         # Run Optimization Button
-        if st.button("Run Genetic Algorithm Optimization"):
+        if st.button("Run Multi-Objective Genetic Algorithm Optimization"):
             # Validate dataset is loaded
             if not self.filepath:
                 st.error("Please select or upload a dataset first!")
@@ -99,32 +96,37 @@ class GeneticAlgorithmUI:
             self.optimizer.MUTATION_PROB = mutation_prob
 
             # Run optimization with progress tracking
-            with st.spinner('Running Genetic Algorithm Optimization...'):
+            with st.spinner('Running Multi-Objective Genetic Algorithm Optimization \n This may take some time.....'):
                 self.optimizer.run_optimization()
 
             # Display Results
             self.display_results()
 
     def display_results(self):
-        # Accuracy Convergence
-        st.subheader("Accuracy Convergence")
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(self.optimizer.generation_best_accuracy, marker='o')
-        ax.set_title("Best Accuracy per Generation")
-        ax.set_xlabel("Generation")
-        ax.set_ylabel("Accuracy")
-        st.pyplot(fig)
+        st.subheader("Optimization Results")
 
-        # Loss Convergence
-        st.subheader("Loss Convergence")
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(self.optimizer.generation_best_loss, marker='o', color='red')
-        ax.set_title("Best Loss per Generation")
-        ax.set_xlabel("Generation")
-        ax.set_ylabel("Loss")
-        st.pyplot(fig)
+        # Create two columns for side-by-side plots
+        col1, col2 = st.columns(2)
 
-        # Best Individual Details
+        # Accuracy Convergence in first column
+        with col1:
+            fig1, ax1 = plt.subplots(figsize=(8, 5))
+            ax1.plot(self.optimizer.generation_best_accuracy, marker='o')
+            ax1.set_title("Best Accuracy per Generation")
+            ax1.set_xlabel("Generation")
+            ax1.set_ylabel("Accuracy")
+            st.pyplot(fig1)
+
+        # Loss Convergence in second column
+        with col2:
+            fig2, ax2 = plt.subplots(figsize=(8, 5))
+            ax2.plot(self.optimizer.generation_best_loss, marker='o', color='red')
+            ax2.set_title("Best Loss per Generation")
+            ax2.set_xlabel("Generation")
+            ax2.set_ylabel("Loss")
+            st.pyplot(fig2)
+
+        # Best Individual Details below the plots
         st.subheader("Best Individual Hyperparameters")
         best_individual = self.optimizer.best_individual
         hyperparameters = {
@@ -136,11 +138,6 @@ class GeneticAlgorithmUI:
             "L2 Regularization": round(best_individual[5], 6)
         }
         st.json(hyperparameters)
-
-        # Performance Metrics
-        st.subheader("Final Model Performance")
-        st.write("These metrics represent the performance of the best model found:")
-        st.write("Note: Detailed metrics are printed in the console output")
 
 
 def main():
