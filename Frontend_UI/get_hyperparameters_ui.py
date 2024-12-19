@@ -7,7 +7,7 @@ import os
 from moga_model_for_ui import StrokeModelOptimizer
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-* Please run the command --> " streamlit run Frontend_UI/moga_ui.py " in the terminal
+* Please run the command --> " streamlit run Frontend_UI/get_hyperparameters_ui.py " in the terminal
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 
