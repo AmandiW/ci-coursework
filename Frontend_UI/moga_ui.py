@@ -4,7 +4,7 @@ import sys
 import os
 
 # Direct import
-from final_moga_ui import StrokeModelOptimizer
+from moga_model_for_ui import StrokeModelOptimizer
 
 
 class GeneticAlgorithmUI:
@@ -96,7 +96,7 @@ class GeneticAlgorithmUI:
             self.optimizer.MUTATION_PROB = mutation_prob
 
             # Run optimization with progress tracking
-            with st.spinner('Running Multi-Objective Genetic Algorithm Optimization \n This may take some time.....'):
+            with st.spinner('Running Multi-Objective Genetic Algorithm Optimization. This may take some time.....'):
                 self.optimizer.run_optimization()
 
             # Display Results
