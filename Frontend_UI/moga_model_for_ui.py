@@ -1,3 +1,14 @@
+
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+* The code is the same as in "moga_optimized_model" 
+
+* The core model and functionality remain exactly the same, the code has been 
+    copied into a .py file for easy deployment on Streamlit.
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
