@@ -1,15 +1,3 @@
-
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-
-
-* The code is the same as in "moga_optimized_ann_final" 
-
-* The core model and functionality remain exactly the same, the code has been copied into a .py file for easy
-    deployment on Streamlit.
-
-
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -53,20 +41,15 @@ class StrokeModelOptimizer:
         """
         Initialize data, Genetic Algorithm (GA) settings, and constraints.
         """
-        # # Clear any existing DEAP creators
-        # if 'FitnessMulti' in creator.__dict__:
-        #     del creator.FitnessMulti
-        # if 'Individual' in creator.__dict__:
-        #     del creator.Individual
 
         # Load and preprocess data
         self.X_train, self.X_test, self.y_train, self.y_test, self.scaler = self.load_and_preprocess_data(filepath)
 
         # Enhanced GA Configuration
         self.POPULATION_SIZE = 20
-        self.MAX_GENERATIONS = 15
+        self.MAX_GENERATIONS = 10
         self.CROSSOVER_PROB = 0.7
-        self.MUTATION_PROB = 0.5
+        self.MUTATION_PROB = 0.3
 
         # Gene configuration: ranges for hyperparameters
         self.GENE_CONFIGS = {
@@ -77,15 +60,21 @@ class StrokeModelOptimizer:
             'learning_rate': (0.0001, 0.01),
             'l2_reg': (1e-4, 1)
         }
-        self.TRAINING_EPOCHS = 15
+        self.TRAINING_EPOCHS = 10
 
         # Tracking variables
         self.generation_best_loss = []
         self.generation_diversity = []
         self.generation_individuals = []
         self.generation_best_accuracy = []
+
+        # Global Optima
+        # Added a variable to track the absolute best individual across all generations
         self.absolute_best_individual = None
-        self.absolute_best_fitness = (float('-inf'), float('inf'))
+        self.absolute_best_fitness = (float('-inf'), float('inf'))  # Initialize with the worst possible fitness
+
+        # Initialize Hall of Fame - CURRENTLY COMMENTED OUT TO REDUCE OUTPUT (already printing the best individuals in the output)
+        # self.hof = tools.HallOfFame(maxsize=10)  # Keep top 10 individuals
 
         self.setup_deap_framework()
 
@@ -127,7 +116,7 @@ class StrokeModelOptimizer:
 
         self.toolbox = base.Toolbox()
 
-        # Gene initialization
+        # Gene initialization, generate a material attribute using a uniform distribution between defined values (constraints)
         for gene, (low, high) in self.GENE_CONFIGS.items():
             self.toolbox.register(f"attr_{gene}", random.uniform, low, high)
 
@@ -138,7 +127,6 @@ class StrokeModelOptimizer:
                                self.toolbox.attr_dropout_rate2,
                                self.toolbox.attr_learning_rate,
                                self.toolbox.attr_l2_reg), n=1)
-
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("mate", tools.cxBlend, alpha=0.5)
         self.toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.5, indpb=0.3)
@@ -162,9 +150,12 @@ class StrokeModelOptimizer:
     def evaluate_individual(self, individual):
         """Evaluate the performance of an ANN defined by individual genes."""
         try:
-            model = self.build_ann(individual)
-            early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+            model = self.build_ann(individual)  # Build model using individual's genes
 
+            early_stopping = EarlyStopping(monitor='val_loss', patience=3,
+                                           restore_best_weights=True)  # Early stopping to prevent overfitting
+
+            # Train the model
             model.fit(self.X_train, self.y_train,
                       epochs=self.TRAINING_EPOCHS,
                       batch_size=64,
@@ -172,16 +163,18 @@ class StrokeModelOptimizer:
                       verbose=0,
                       callbacks=[early_stopping])
 
+            # Evaluate on test data
             loss, acc = model.evaluate(self.X_test, self.y_test, verbose=0)
 
             # Clear model from memory
             tf.keras.backend.clear_session()
             del model
 
+            # Fitness: Maximize accuracy Minimize loss
             return acc, loss
         except Exception as e:
-            print(f"Evaluation error: {e}")
-            return 0, 1e6
+            # print(f"Evaluation error: {e}")
+            return 0, 1e6  # Penalize invalid individuals
 
     def is_individual_better(self, new_fitness, current_best_fitness):
         """Compare individuals using weighted sum approach"""
@@ -213,12 +206,18 @@ class StrokeModelOptimizer:
         fitnesses = list(map(self.toolbox.evaluate, pop))
         for ind, fit in zip(pop, fitnesses):
             ind.fitness.values = fit
+
+            # Check if this is the absolute best individual so far
             if self.is_individual_better(fit, self.absolute_best_fitness):
                 self.absolute_best_individual = list(ind)
                 self.absolute_best_fitness = fit
 
-        # Generational loop
+        # Update HoF with initial population - CURRENTLY COMMENTED OUT TO REDUCE OUTPUT (already printing the best individuals in the output)
+        # self.hof.update(pop)
+
+        # Generational loop with enhanced tracking and diversity preservation
         for gen in range(self.MAX_GENERATIONS):
+            # Calculate and track population diversity
             current_diversity = self.calculate_population_diversity(pop)
             self.generation_diversity.append(current_diversity)
 
@@ -248,9 +247,14 @@ class StrokeModelOptimizer:
             fitnesses = map(self.toolbox.evaluate, invalid_ind)
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
+
+                # Check if this is the absolute best individual so far
                 if self.is_individual_better(fit, self.absolute_best_fitness):
                     self.absolute_best_individual = list(ind)
                     self.absolute_best_fitness = fit
+
+            # # Update Hall of Fame - CURRENTLY COMMENTED OUT TO REDUCE OUTPUT (already printing the best individuals in the output)
+            # self.hof.update(offspring)
 
             # Replace population
             pop[:] = offspring
@@ -260,7 +264,7 @@ class StrokeModelOptimizer:
             self.generation_best_loss.append(best_ind.fitness.values[1])
             self.generation_best_accuracy.append(best_ind.fitness.values[0])
 
-            # Store generation information
+            # Store information about each individual in this generation
             self.generation_individuals.append([])
             for ind in offspring:
                 ind_info = {"individual": ind, "fitness": ind.fitness.values}
@@ -270,13 +274,20 @@ class StrokeModelOptimizer:
             print(f"\nGeneration {gen + 1}:")
             print(f"Diversity: {current_diversity}")
             print("\nAll Individuals in this Generation:")
+
             for i, ind_info in enumerate(self.generation_individuals[-1], 1):
                 print(f"Individual {i}: {ind_info['individual']}")
                 print(f"Fitness (Accuracy, Loss): {ind_info['fitness']}\n")
+
             print(f"Best Individual: {best_ind}")
             print(f"Best Accuracy: {best_ind.fitness.values[0]}")
             print(f"Best Loss: {best_ind.fitness.values[1]}")
             print(f"Best Weighted Sum: {self.calculate_weighted_sum(best_ind.fitness.values)}")
+
+            # # Print Hall of Fame information - CURRENTLY COMMENTED OUT TO REDUCE OUTPUT (already printing the best individuals in the output)
+            # print("\nHall of Fame - Top 3 Individuals:")
+            # for i, hof_ind in enumerate(self.hof[:3], 1):
+            #     print(f"#{i} - Accuracy: {hof_ind.fitness.values[0]:.4f}, Loss: {hof_ind.fitness.values[1]:.4f}")
 
         # Store the best overall individual
         self.best_individual = self.absolute_best_individual
@@ -284,10 +295,30 @@ class StrokeModelOptimizer:
         # Visualize results
         self.visualize_results(pop)
 
+        # def display_hall_of_fame(self): - CURRENTLY COMMENTED OUT TO REDUCE OUTPUT (already printing the best individuals in the output)
+        #     """Display detailed information about Hall of Fame individuals"""
+        #
+        # print("\nFinal Hall of Fame - All Individuals:")
+        # for idx, individual in enumerate(self.hof, 1):
+        #     weighted_sum = self.calculate_weighted_sum(individual.fitness.values)
+        #     print(f"\nRank {idx}:")
+        #     print(f"Individual: {individual}")
+        #     print(f"Fitness (Accuracy, Loss): {individual.fitness.values}")
+        #     print(f"Weighted Sum: {weighted_sum}")
+        #     print("Hyperparameters:")
+        #     print(f"Layer 1 Neurons: {int(individual[0])}")
+        #     print(f"Layer 2 Neurons: {int(individual[1])}")
+        #     print(f"Dropout Rate 1: {individual[2]:.3f}")
+        #     print(f"Dropout Rate 2: {individual[3]:.3f}")
+        #     print(f"Learning Rate: {individual[4]:.6f}")
+        #     print(f"L2 Regularization: {individual[5]:.6f}")
+
     def visualize_results(self, pop):
-        # [Previous visualization code remains the same]
+
         # Create a figure with multiple subplots
         fig, axs = plt.subplots(3, 2, figsize=(15, 12))
+        # Adjust subplot spacing for better readability
+        plt.subplots_adjust(left=0.1, bottom=0.1, right=0.9, top=0.85, wspace=0.4, hspace=0.4)
 
         # 1. Convergence Plot (Accuracy)
         axs[0, 0].plot(range(1, len(self.generation_best_accuracy) + 1),
@@ -338,10 +369,32 @@ class StrokeModelOptimizer:
         # Remove the empty subplot
         fig.delaxes(axs[2, 1])
 
+        # 6. Objective Space Evolution
+        plt.figure(figsize=(10, 6))
+        for gen_idx, gen_individuals in enumerate(self.generation_individuals):
+            gen_accuracies = [ind['fitness'][0] for ind in gen_individuals]
+            gen_losses = [ind['fitness'][1] for ind in gen_individuals]
+            plt.scatter(gen_losses, gen_accuracies, alpha=0.5,
+                        label=f'Gen {gen_idx + 1}' if gen_idx % 3 == 0 else "")
+        plt.xlabel('Loss')
+        plt.ylabel('Accuracy')
+        plt.title('Evolution of Solutions in Objective Space')
+        plt.legend()
+        plt.show()
+
+        # 7. Generation-wise Box Plots
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        axes = axes.ravel()
+
+        for idx, (name, values) in enumerate(zip(hyperparameter_names, zip(*pop))):
+            sns.boxplot(data=list(values), ax=axes[idx])
+            axes[idx].set_title(f'{name} Distribution')
+            axes[idx].tick_params(rotation=45)
+
         plt.tight_layout()
         plt.show()
 
-        # Train final model with best hyperparameters
+        # Best hyperparameters
         print("\nBest Overall Individual Hyperparameters:", self.best_individual)
         # Train with full training data using optimized hyperparameters
         neurons1, neurons2, drop1, drop2, lr, l2_reg = self.best_individual
@@ -352,8 +405,9 @@ class StrokeModelOptimizer:
         print(f"Dropout Rate 2: {drop2}")
         print(f"Learning Rate: {lr}")
         print(f"L2 Regularization: {l2_reg}")
-        final_model = self.build_ann(self.best_individual)
 
+        # Build and train final model using BEST optimized hyperparameters
+        final_model = self.build_ann(self.best_individual)
         final_model.fit(self.X_train, self.y_train,
                         epochs=5,
                         batch_size=64,

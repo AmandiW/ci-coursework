@@ -6,6 +6,10 @@ import os
 # Direct import
 from moga_model_for_ui import StrokeModelOptimizer
 
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+* Please run the command --> " streamlit run Frontend_UI/moga_ui.py " in the terminal
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
 
 class GeneticAlgorithmUI:
     def __init__(self):
