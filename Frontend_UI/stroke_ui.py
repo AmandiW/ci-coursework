@@ -8,6 +8,9 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout
 from tensorflow.keras.regularizers import l2
 
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+* Please run the command --> " streamlit run Frontend_UI/stroke_ui.py " in the terminal
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 class StrokePredictionUI:
     def __init__(self):
