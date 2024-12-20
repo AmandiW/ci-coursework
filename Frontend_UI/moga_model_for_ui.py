@@ -59,19 +59,19 @@ class StrokeModelOptimizer:
         # Enhanced GA Configuration
         self.POPULATION_SIZE = 20
         self.MAX_GENERATIONS = 10
-        self.CROSSOVER_PROB = 0.7
-        self.MUTATION_PROB = 0.3
+        self.CROSSOVER_PROB = 0.6
+        self.MUTATION_PROB = 0.9
 
         # Gene configuration: ranges for hyperparameters
         self.GENE_CONFIGS = {
-            'neurons_layer1': (32, 512),
-            'neurons_layer2': (16, 256),
+            'neurons_layer1': (16, 512),
+            'neurons_layer2': (32, 512),
             'dropout_rate1': (0.1, 0.6),
             'dropout_rate2': (0.1, 0.4),
             'learning_rate': (0.0001, 0.01),
             'l2_reg': (1e-4, 1)
         }
-        self.TRAINING_EPOCHS = 10
+        self.TRAINING_EPOCHS = 20
 
         # Tracking variables
         self.generation_best_loss = []
